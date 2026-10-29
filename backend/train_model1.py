@@ -1,5 +1,4 @@
 
-import os
 import random
 from pathlib import Path
 
@@ -9,11 +8,12 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms, models
 from torchvision.models import MobileNet_V3_Small_Weights
 
-
 # ---------------- CONFIGURATION ----------------
 
-DATASET_DIR = Path(r"D:\deepLearningProject\dataset\train")
-MODEL_DIR = Path(r"D:\deepLearningProject\backend\models")
+DATASET_DIR = Path(r"F:\dataset\train")
+MODEL_DIR = Path(
+    r"C:\Users\Harshal Makode\Desktop\DL\FruitClassification\backend\models"
+)
 MODEL_PATH = MODEL_DIR / "model1_fruit.pth"
 
 IMAGE_SIZE = 224
@@ -22,12 +22,8 @@ EPOCHS = 5
 VALIDATION_RATIO = 0.15
 SEED = 42
 
-DEVICE = torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
-
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Training device: {DEVICE}")
-
 
 # ---------------- IMAGE PREPROCESSING ----------------
 
@@ -40,13 +36,10 @@ transform = transforms.Compose([
     )
 ])
 
-
 # ---------------- LOAD DATASET ----------------
 
 if not DATASET_DIR.exists():
-    raise FileNotFoundError(
-        f"Dataset folder not found: {DATASET_DIR}"
-    )
+    raise FileNotFoundError(f"Dataset folder not found: {DATASET_DIR}")
 
 dataset = datasets.ImageFolder(
     root=str(DATASET_DIR),
@@ -56,25 +49,17 @@ dataset = datasets.ImageFolder(
 print("Detected classes:", dataset.classes)
 print("Total images:", len(dataset))
 
-if dataset.classes != ["apples", "bananas"]:
-    raise ValueError(
-        "Expected folders named 'apples' and 'bananas'. "
-        f"Found: {dataset.classes}"
-    )
-
 if len(dataset) < 2:
     raise ValueError("Not enough images to train.")
 
-# Count images in each class.
+if len(dataset.classes) < 2:
+    raise ValueError("At least two classes are required.")
+
 class_counts = {
-    class_name: sum(
-        1 for _, label in dataset.samples
-        if label == class_index
-    )
+    class_name: sum(1 for _, label in dataset.samples if label == class_index)
     for class_index, class_name in enumerate(dataset.classes)
 }
 print("Images per class:", class_counts)
-
 
 # ---------------- TRAIN / VALIDATION SPLIT ----------------
 
@@ -82,6 +67,9 @@ generator = torch.Generator().manual_seed(SEED)
 
 validation_size = int(len(dataset) * VALIDATION_RATIO)
 training_size = len(dataset) - validation_size
+
+if validation_size < 1:
+    raise ValueError("Not enough images for a validation split.")
 
 train_dataset, val_dataset = random_split(
     dataset,
@@ -106,19 +94,18 @@ val_loader = DataLoader(
 print("Training images:", training_size)
 print("Validation images:", validation_size)
 
-
 # ---------------- BUILD MODEL ----------------
 
 weights = MobileNet_V3_Small_Weights.DEFAULT
 model = models.mobilenet_v3_small(weights=weights)
 
-# Freeze the pretrained feature extractor initially.
+# Freeze pretrained feature extractor.
 for parameter in model.features.parameters():
     parameter.requires_grad = False
 
-# Replace the final classification layer with 2 outputs.
+# IMPORTANT: Four output classes, based on dataset folders.
 input_features = model.classifier[3].in_features
-model.classifier[3] = nn.Linear(input_features, 2)
+model.classifier[3] = nn.Linear(input_features, len(dataset.classes))
 
 model = model.to(DEVICE)
 
@@ -128,10 +115,9 @@ optimizer = torch.optim.Adam(
     lr=0.001
 )
 
-
 # ---------------- TRAINING ----------------
 
-best_val_accuracy = 0.0
+best_val_accuracy = -1.0
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 for epoch in range(EPOCHS):
@@ -145,23 +131,20 @@ for epoch in range(EPOCHS):
         labels = labels.to(DEVICE)
 
         optimizer.zero_grad()
-
         outputs = model(images)
         loss = criterion(outputs, labels)
-
         loss.backward()
         optimizer.step()
 
         train_loss_total += loss.item() * images.size(0)
         predictions = outputs.argmax(dim=1)
-
         train_correct += (predictions == labels).sum().item()
         train_total += labels.size(0)
 
     train_accuracy = 100 * train_correct / train_total
     train_loss = train_loss_total / train_total
 
-    # Evaluate on validation images.
+    # Validation
     model.eval()
     val_correct = 0
     val_total = 0
@@ -177,7 +160,6 @@ for epoch in range(EPOCHS):
 
             val_loss_total += loss.item() * images.size(0)
             predictions = outputs.argmax(dim=1)
-
             val_correct += (predictions == labels).sum().item()
             val_total += labels.size(0)
 
@@ -192,7 +174,7 @@ for epoch in range(EPOCHS):
         f"Val Accuracy: {val_accuracy:.2f}%"
     )
 
-    # Save the best model based on validation accuracy.
+    # Save the best validation checkpoint.
     if val_accuracy > best_val_accuracy:
         best_val_accuracy = val_accuracy
 
