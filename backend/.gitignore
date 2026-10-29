@@ -1,0 +1,23 @@
+
+# Dataset
+/dataset/
+
+# Python virtual environments
+/backend/venv/
+/backend/.venv/
+
+# Secrets
+/backend/.env
+/backend/.env.*
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Trained model weights
+/backend/models/*.pth
+/backend/models/*.pt
+
+# Editor settings
+.vscode/
